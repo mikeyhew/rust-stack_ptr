@@ -1,5 +1,5 @@
 [package]
-name = "owned"
+name = "stack_ptr"
 version = "0.1.0"
 authors = ["Michael Hewson <michael@michaelhewson.ca>"]
 
