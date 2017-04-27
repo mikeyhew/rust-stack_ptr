@@ -4,6 +4,8 @@ version = "0.1.0"
 authors = ["Michael Hewson <michael@michaelhewson.ca>"]
 description = "An owned pointer to stack-allocated data"
 repository = "https://github.com/mikeyhew/rust-stack_ptr"
+license = "MIT"
+license_file = "LICENSE"
 
 [dependencies]
 
