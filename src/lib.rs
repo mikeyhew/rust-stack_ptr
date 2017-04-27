@@ -72,21 +72,8 @@ impl<'a, T: ?Sized> DerefMut for StackPtr<'a, T> {
     }
 }
 
-// pub fn sound() {
-//     stack_ptr! {
-//         let slice: StackPtr<[_]> = StackPtr::new([1,2,3]);
-//     }
-//
-//     let _slice2 = slice;
-// }
-
-// pub fn dangling() -> StackPtr<'static, [i32]> {
-//     stack_ptr! {
-//         let bar: StackPtr<[_]> = StackPtr::new([1,2,3,4,5]);
-//     }
-//
-//     bar
-// }
+unsafe impl<'a, T: 'a + Send + ?Sized> Send for StackPtr<'a, T> {}
+unsafe impl<'a, T: 'a + Sync + ?Sized> Sync for StackPtr<'a, T> {}
 
 /// Safely declares a StackPtr<$ty> with an appropriate lifetime to the data contained in $expr.
 #[macro_export]
