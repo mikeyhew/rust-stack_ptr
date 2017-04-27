@@ -1,7 +1,9 @@
 use std::marker::PhantomData;
 use std::cell::Cell;
 use std::{ptr, mem};
+use std::ops::{Deref, DerefMut};
 
+/// An owning pointer to stack-allocated data. Similar to `Box`, except `Box` is heap-allocated.
 pub struct StackPtr<'a, T: 'a + ?Sized> {
     ptr: *mut T,
     _marker: PhantomData<T>,
@@ -9,8 +11,8 @@ pub struct StackPtr<'a, T: 'a + ?Sized> {
 }
 
 impl<'a, T: 'a + ?Sized> StackPtr<'a, T> {
-    /// Creates a StackPtr
-    pub unsafe fn new(ptr: *mut T, lifetime: &'a mut ()) -> StackPtr<'a, T>{
+    /// `ptr` must be a pointer to forgotten data, whose lifetime is at least as long as `lifetime`'s lifetime. Better to just use the `stack_ptr!` macro.
+    pub unsafe fn new(ptr: *mut T, _lifetime: &'a mut ()) -> StackPtr<'a, T>{
         StackPtr {
             ptr: ptr,
             _marker: PhantomData,
@@ -18,13 +20,15 @@ impl<'a, T: 'a + ?Sized> StackPtr<'a, T> {
         }
     }
 
+    /// an implementation of std::borrow::Borrow, where the returned reference has the same lifetime as `self`.
     pub fn borrow(&self) -> &'a T {
         unsafe {
             &*self.ptr
         }
     }
 
-    pub fn borrow_mut(&mut self) -> &'a T {
+    /// an implementation of std::borrow::BorrowMut, where the returned reference has the same lifetime as `self`.
+    pub fn borrow_mut(&mut self) -> &'a mut T {
         unsafe {
             &mut *self.ptr
         }
@@ -39,6 +43,22 @@ impl<'a, T: ?Sized> Drop for StackPtr<'a, T> {
     }
 }
 
+impl<'a, T: ?Sized> Deref for StackPtr<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        self.borrow()
+    }
+}
+
+impl<'a, T: ?Sized> DerefMut for StackPtr<'a, T> {
+
+    fn deref_mut(&mut self) -> &mut T {
+        self.borrow_mut()
+    }
+}
+
+#[macro_export]
 macro_rules! stack_ptr {
     (let $name:ident: StackPtr<$ty:ty> = StackPtr::new($expr:expr);) => {
         let mut _value = $expr;
@@ -51,25 +71,12 @@ macro_rules! stack_ptr {
     };
 }
 
-// impl <'a, Borrowed: 'a + ?Sized> ScopedBorrow<'a, Borrowed> for StackPtr<'a, Borrowed> {
-//     fn scoped_borrow(&'a self) -> &'a Borrowed {
-//         self.borrow_mut()
-//     }
-// }
-//
-// impl <'a, Borrowed: 'a + ?Sized> ScopedBorrowMut<'a, Borrowed> for StackPtr<'a, Borrowed> {
-//     fn scoped_borrow_mut(&'a mut self) -> &'a Borrowed {
-//         self.borrow_mut()
-//     }
-// }
-
 pub fn sound() {
     stack_ptr! {
         let slice: StackPtr<[_]> = StackPtr::new([1,2,3]);
     }
 
-    let slice2 = slice;
-    let slice3 = slice;
+    let _slice2 = slice;
 }
 
 // pub fn dangling() -> StackPtr<'static, [i32]> {
