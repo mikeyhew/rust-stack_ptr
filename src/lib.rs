@@ -1,47 +1,17 @@
-//! Provides `StackPtr`, an owned pointer to stack-allocated data. Create one
-//! using the provided `stack_ptr!` macro:
-//!
-//! ```
-//! stack_ptr! {
-//!     let slice: StackPtr<[_]> = StackPtr::new([1,2,3,4,5]);
-//! }
-//! ```
+//! Provides `StackPtr`, an owned pointer to stack-allocated data. This is useful for casting a value to an unsized type (e.g. trait object) while maintaining ownership, without doing a heap allocation with `Box`.
 #![cfg_attr(feature = "nightly", feature(unsize, coerce_unsized))]
 use std::marker::PhantomData;
 use std::{ptr, mem};
 use std::ops::{Deref, DerefMut};
 
-/// An owning pointer to stack-allocated data. Similar to `Box`, except `Box` is heap-allocated.
+/// An owned pointer type to stack-allocated data. See the module-level documentation for further details.
 pub struct StackPtr<'a, T: 'a + ?Sized> {
     ptr: *mut T,
+    lifetime: PhantomData<&'a mut ()>,
     _marker: PhantomData<T>,
-    lifetime: PhantomData<&'a mut ()>
 }
 
 impl<'a, T: 'a + ?Sized> StackPtr<'a, T> {
-    /// `ptr` must be a pointer to forgotten data on the stack, whose lifetime is at least as long as `lifetime`'s lifetime. Better to just use the `stack_ptr!` macro.
-    pub unsafe fn new(ptr: *mut T, _lifetime: &'a mut ()) -> StackPtr<'a, T> {
-        StackPtr {
-            ptr: ptr,
-            lifetime: PhantomData,
-            _marker: PhantomData,
-        }
-    }
-
-    /// an implementation of std::borrow::Borrow, where the returned reference has the same lifetime as `self`.
-    pub fn borrow(&self) -> &'a T {
-        unsafe {
-            &*self.ptr
-        }
-    }
-
-    /// an implementation of std::borrow::BorrowMut, where the returned reference has the same lifetime as `self`.
-    pub fn borrow_mut(&mut self) -> &'a mut T {
-        unsafe {
-            &mut *self.ptr
-        }
-    }
-
     /// Consumes a `StackPtr` without running its destructor, and returns a `*mut` pointer to the data, and a `std::marker::PhantomData` representing the lifetime of the `StackPtr`. Useful for doing a conversion on the pointer and reconstructing a `StackPtr` with `from_raw_parts`.
     pub fn into_raw_parts(sp: StackPtr<'a, T>) -> (*mut T, PhantomData<&'a mut ()>) {
         let ret = (sp.ptr, sp.lifetime);
@@ -53,8 +23,8 @@ impl<'a, T: 'a + ?Sized> StackPtr<'a, T> {
     pub unsafe fn from_raw_parts(ptr: *mut T, lifetime: PhantomData<&'a mut ()>) -> StackPtr<'a, T> {
         StackPtr {
             ptr: ptr,
+            lifetime: lifetime,
             _marker: PhantomData,
-            lifetime: lifetime
         }
     }
 }
@@ -77,14 +47,17 @@ impl<'a, T: ?Sized> Deref for StackPtr<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        self.borrow()
+        unsafe {
+            &*self.ptr
+        }
     }
 }
 
 impl<'a, T: ?Sized> DerefMut for StackPtr<'a, T> {
-
     fn deref_mut(&mut self) -> &mut T {
-        self.borrow_mut()
+        unsafe {
+            &mut *self.ptr
+        }
     }
 }
 
@@ -94,10 +67,8 @@ unsafe impl<'a, T: 'a + Sync + ?Sized> Sync for StackPtr<'a, T> {}
 /// Safely declares a StackPtr<$ty> with an appropriate lifetime to the data contained in $expr.
 #[macro_export]
 macro_rules! stack_ptr {
-    (let $name:ident: StackPtr<$ty:ty> = StackPtr::new($expr:expr);) => {
         let mut _value = $expr;
         let mut _lifetime_marker = ();
-        let $name = unsafe {
             let ptr = &mut _value as *mut $ty;
             ::std::mem::forget(_value);
             StackPtr::new(ptr, &mut _lifetime_marker)
@@ -109,9 +80,9 @@ macro_rules! stack_ptr {
 #[macro_export]
 macro_rules! coerce_stackptr {
     ($sp:expr, $ty:ty) => {{
-        let (ptr, lifetime) = StackPtr::into_raw_parts($sp);
+        let (ptr, lifetime) = $crate::StackPtr::into_raw_parts($sp);
         unsafe {
-            StackPtr::from_raw_parts(ptr as *mut $ty, lifetime)
+            $crate::StackPtr::from_raw_parts(ptr as *mut $ty, lifetime)
         }
     }};
 }
