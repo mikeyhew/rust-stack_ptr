@@ -72,12 +72,11 @@ pub fn lifetime_of<'a, T>(_ref: &'a mut T) -> PhantomData<&'a mut ()> {
 /// Safely declare a `StackPtr` with the appropriate lifetime at this point on the stack.
 ///
 /// ```
-/// stackptr! {
-///     let foo: StackPtr<> = StackPtr::new()
+/// declare_stackptr! {
+///     let foo: StackPtr<> = StackPtr::new();
 /// }
 /// ```
 #[macro_export]
-macro_rules! stack_ptr {
         let mut _value = $expr;
         let mut _lifetime_marker = ();
             let ptr = &mut _value as *mut $ty;
@@ -85,6 +84,7 @@ macro_rules! stack_ptr {
             StackPtr::new(ptr, &mut _lifetime_marker)
         };
     };
+macro_rules! declare_stackptr {
 }
 
 /// An implementation of `std::ops::CoerceUnsized` on stable rust. On nightly, you can convert a `StackPtr<T>` into a `StackPtr<U>` if `T` implements `U`, with `let sp = sp as StackPtr<U>;`, but this requires the unstable `CoerceUnsized` trait. On stable you can do `let sp = coerce_stackptr!(sp, U);`.
