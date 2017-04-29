@@ -64,7 +64,18 @@ impl<'a, T: ?Sized> DerefMut for StackPtr<'a, T> {
 unsafe impl<'a, T: 'a + Send + ?Sized> Send for StackPtr<'a, T> {}
 unsafe impl<'a, T: 'a + Sync + ?Sized> Sync for StackPtr<'a, T> {}
 
-/// Safely declares a StackPtr<$ty> with an appropriate lifetime to the data contained in $expr.
+#[doc(hidden)]
+pub fn lifetime_of<'a, T>(_ref: &'a mut T) -> PhantomData<&'a mut ()> {
+    PhantomData
+}
+
+/// Safely declare a `StackPtr` with the appropriate lifetime at this point on the stack.
+///
+/// ```
+/// stackptr! {
+///     let foo: StackPtr<> = StackPtr::new()
+/// }
+/// ```
 #[macro_export]
 macro_rules! stack_ptr {
         let mut _value = $expr;
