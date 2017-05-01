@@ -8,7 +8,7 @@ documentation = "https://docs.rs/"
 license = "MIT"
 license_file = "LICENSE"
 
-[dependencies]
+[dev-dependencies]
 
 [features]
 nightly = []

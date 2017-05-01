@@ -1,16 +1,29 @@
-//! Provides `StackPtr`, an owned pointer to stack-allocated data. This is useful for casting a value to an unsized type (e.g. trait object) while maintaining ownership, without doing a heap allocation with `Box`.
+//! Provides `StackPtr`, an owned pointer to stack-allocated data. This lets you cast a value to an unsized type (e.g. trait object) while maintaining ownership and without doing a heap allocation with `Box`.
 //!
-//! # Usage
+//! # Example Usage
 //!
 //! ```
 //! #[macro_use]
 //! extern crate stack_ptr;
 //! use stack_ptr::StackPtr;
+//! use stack_ptr::ArrayExt2;
+//!
+//! /// Adds a closure to the vec
+//! fn execute_all<'a, I>(closures: I)
+//! where I: IntoIterator<Item=StackPtr<'a, FnOnce()>> {
+//!     unimplemented!();
+//! }
 //!
 //! fn main() {
 //!     declare_stackptr! {
-//!         let f: StackPtr<[_]> = StackPtr::new([1,2,3]);
+//!         let callback1: StackPtr<FnOnce()> = StackPtr::new(||{});
 //!     }
+//!
+//!     declare_stackptr! {
+//!         let callback2: StackPtr<FnOnce()> = StackPtr::new(|| {});
+//!     }
+//!
+//!     execute_all(ArrayExt2([callback1, callback2]));
 //! }
 //! ```
 #![cfg_attr(feature = "nightly", feature(unsize, coerce_unsized))]
@@ -75,6 +88,46 @@ impl<'a, T: ?Sized> DerefMut for StackPtr<'a, T> {
     }
 }
 
+impl<'a, T> IntoIterator for StackPtr<'a, T>
+where T: 'a + IntoIterator {
+    type Item = T::Item;
+    type IntoIter = T::IntoIter;
+
+    fn into_iter(self) -> T::IntoIter {
+        let ptr = self.ptr;
+        mem::forget(self);
+        unsafe {
+            ptr::read(ptr).into_iter()
+        }
+    }
+}
+
+struct SliceIntoIter<'a, T: 'a> {
+    start: *mut T,
+    idx: usize,
+    len: usize,
+    lifetime: PhantomData<&'a mut ()>,
+    _marker: PhantomData<[T]>,
+}
+
+impl<'a, T> Iterator for SliceIntoIter<'a, T> {
+    fn next(&mut self) -> T {
+
+    }
+}
+
+impl<'a, T> IntoIterator for StackPtr<'a, [T]> {
+    type Item = T;
+    type IntoIter = SliceIntoIter<'a, T>;
+
+    fn into_iter(self) -> IntoIter {
+        SliceIntoIter {
+            start: self.ptr,
+
+        }
+    }
+}
+
 unsafe impl<'a, T: 'a + Send + ?Sized> Send for StackPtr<'a, T> {}
 unsafe impl<'a, T: 'a + Sync + ?Sized> Sync for StackPtr<'a, T> {}
 
@@ -109,20 +162,6 @@ macro_rules! __declare_stackptr {
 }
 
 /// Safely declare a `StackPtr` with the appropriate lifetime at this point on the stack.
-///
-/// ```
-/// # #[test]
-/// # fn test_stackptr_macro {
-/// let v = vec![1,2,3];
-/// declare_stackptr! {
-///     let closure = StackPtr::new(|| {
-///         for x in vec.iter() {
-///             // do something with x
-///         }
-///     });
-/// }
-/// # }
-/// ```
 #[macro_export]
 macro_rules! declare_stackptr {
     (let $name:ident: StackPtr<$ty:ty> = StackPtr::new($expr:expr);) => {
@@ -140,19 +179,6 @@ macro_rules! declare_stackptr {
 }
 
 /// An implementation of `std::ops::CoerceUnsized` on stable rust. On nightly, you can convert a `StackPtr<T>` into a `StackPtr<U>` if `T` implements `U`, with `let sp = sp as StackPtr<U>;`, but this requires the unstable `CoerceUnsized` trait. On stable you can do `let sp = coerce_stackptr!(sp, U);`.
-///
-/// # Example:
-///
-/// ```
-/// fn append_closure<'vec, 'f, F>(closures: &'vec mut Vec<StackPtr<'vec, FnOnce()>>, f: StackPtr<'f, F>)
-/// where F: FnOnce() {
-///     #[cfg(feature = "nightly")]
-///     let f = f as StackPtr<FnOnce()>;
-///     #[cfg(not(feature = "nightly"))]
-///     let f = coerce_stackptr!(f, FnOnce());
-///     closures.push(f);
-/// }
-/// ```
 #[macro_export]
 macro_rules! coerce_stackptr {
     ($sp:expr, $ty:ty) => {{
@@ -183,4 +209,31 @@ mod tests {
 
         assert_eq!(&*slice, &[1,2,3,4,5]);
     }
+
+    fn execute_all<'a, I>(closures: I)
+    where I: IntoIterator<Item=StackPtr<'a, FnOnce()>> {
+        for closure in closures {
+            mem::drop(closure);
+        }
+    }
+
+    #[test]
+    fn test_execute_all() {
+        let mut callback1 = ||{};
+        let mut callback1_lifetime = ();
+        let callback1 = unsafe {
+            let ptr = &mut callback1.0 as *mut FnOnce();
+            mem::forget(callback1.0);
+            StackPtr::from_raw_parts(ptr, lifetime_of(&mut callback1.1))
+        };
+
+        let mut callback2 = (||{}, ());
+        let callback2 = unsafe {
+            let ptr = &mut callback2.0 as *mut FnOnce();
+            mem::forget(callback2.0);
+            StackPtr::from_raw_parts(ptr, lifetime_of(&mut callback2.1))
+        };
+        execute_all(vec![callback1, callback2]);
+    }
+
 }
