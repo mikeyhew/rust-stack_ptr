@@ -31,29 +31,31 @@ fn main() {
 #![cfg_attr(feature = "nightly", feature(unsize, coerce_unsized))]
 use std::marker::PhantomData;
 use std::{ptr, mem};
-use std::ops::{Deref, DerefMut};
+
+mod impls;
+pub mod iter;
 
 /// An owned pointer type to stack-allocated data. See the module-level documentation for further details.
 pub struct StackPtr<'a, T: 'a + ?Sized> {
-    ptr: *mut T,
-    lifetime: PhantomData<&'a mut ()>,
+    ptr: &'a mut T,
     _marker: PhantomData<T>,
 }
 
 impl<'a, T: 'a + ?Sized> StackPtr<'a, T> {
-    /// Consumes a `StackPtr` without running its destructor, and returns a `*mut` pointer to the data, and a `std::marker::PhantomData` representing the lifetime of the `StackPtr`. Useful for doing a conversion on the pointer and reconstructing a `StackPtr` with `from_raw_parts`.
-    pub fn into_raw_parts(sp: StackPtr<'a, T>) -> (*mut T, PhantomData<&'a mut ()>) {
-        let ret = (sp.ptr, sp.lifetime);
-        mem::forget(sp);
-        ret
-    }
-
-    /// Constructs a new `StackPtr` from its raw parts. Usually called on the result of `into_raw_parts`.
-    pub unsafe fn from_raw_parts(ptr: *mut T, lifetime: PhantomData<&'a mut ()>) -> StackPtr<'a, T> {
+    /// Constructs a new `StackPtr` from an `&mut` reference. The `StackPtr` will assume ownership of the pointed-to value, so make sure you call `std::mem::forget` on the value to avoid double-drop. The `declare_stackptr!` macro does this all safely for you.
+    pub unsafe fn from_mut(ptr: &'a mut T) -> StackPtr<'a, T> {
         StackPtr {
             ptr: ptr,
-            lifetime: lifetime,
             _marker: PhantomData,
+        }
+    }
+
+    /// Consumes a `StackPtr` without dropping it, and returns a `&mut` reference to the data. Useful for doing a coercion on the reference and reconstructing a new `StackPtr` with `from_mut`.
+    pub fn into_mut(sp: StackPtr<'a, T>) -> &'a mut T {
+        unsafe {
+            let ptr = sp.ptr as *mut T;
+            mem::forget(sp);
+            &mut *ptr
         }
     }
 }
@@ -66,76 +68,10 @@ impl<'a, T: ?Sized> Drop for StackPtr<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized> ::std::fmt::Debug for StackPtr<'a, T> where T: ::std::fmt::Debug {
-    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        self.deref().fmt(formatter)
-    }
-}
-
-impl<'a, T: ?Sized> Deref for StackPtr<'a, T> {
-    type Target = T;
-
-    fn deref(&self) -> &T {
-        unsafe {
-            &*self.ptr
-        }
-    }
-}
-
-impl<'a, T: ?Sized> DerefMut for StackPtr<'a, T> {
-    fn deref_mut(&mut self) -> &mut T {
-        unsafe {
-            &mut *self.ptr
-        }
-    }
-}
-
-impl<'a, T> IntoIterator for StackPtr<'a, T>
-where T: 'a + IntoIterator {
-    type Item = T::Item;
-    type IntoIter = T::IntoIter;
-
-    fn into_iter(self) -> T::IntoIter {
-        let ptr = self.ptr;
-        mem::forget(self);
-        unsafe {
-            ptr::read(ptr).into_iter()
-        }
-    }
-}
-
-struct SliceIntoIter<'a, T: 'a> {
-    start: *mut T,
-    idx: usize,
-    len: usize,
-    lifetime: PhantomData<&'a mut ()>,
-    _marker: PhantomData<[T]>,
-}
-
-impl<'a, T> Iterator for SliceIntoIter<'a, T> {
-    fn next(&mut self) -> T {
-
-    }
-}
-
-impl<'a, T> IntoIterator for StackPtr<'a, [T]> {
-    type Item = T;
-    type IntoIter = SliceIntoIter<'a, T>;
-
-    fn into_iter(self) -> IntoIter {
-        SliceIntoIter {
-            start: self.ptr,
-
-        }
-    }
-}
-
-unsafe impl<'a, T: 'a + Send + ?Sized> Send for StackPtr<'a, T> {}
-unsafe impl<'a, T: 'a + Sync + ?Sized> Sync for StackPtr<'a, T> {}
-
 #[doc(hidden)]
-pub fn lifetime_of<'a, T>(_ref: &'a mut T) -> PhantomData<&'a mut ()> {
-    PhantomData
+#[inline(always)]
+pub unsafe fn construct_mut_ref<'a, T>(ptr: *mut T, _lifetime_marker: &'a mut ()) -> &'a mut T {
+    &mut *ptr
 }
 
 #[doc(hidden)]
@@ -158,7 +94,7 @@ macro_rules! __declare_stackptr {
         __declare_stackptr_variable!($mutable, $name, unsafe {
             let ptr = &mut _value as *mut $ty;
             ::std::mem::forget(_value);
-            StackPtr::from_raw_parts(ptr, $crate::lifetime_of(&mut _lifetime_marker))
+            StackPtr::from_mut($crate::construct_mut_ref(ptr, &mut _lifetime_marker))
         });
     };
 }
@@ -198,44 +134,4 @@ mod nightly {
     use std::marker::Unsize;
 
     impl<'a, T, U> CoerceUnsized<StackPtr<'a, U>> for StackPtr<'a, T> where T: Unsize<U> + ?Sized, U: ?Sized {}
-}
-
-#[cfg(test)]
-mod tests {
-    use super::StackPtr;
-    #[test]
-    fn test_basic() {
-        declare_stackptr!{
-            let slice: StackPtr<[i32]> = StackPtr::new([1,2,3,4,5]);
-        }
-
-        assert_eq!(&*slice, &[1,2,3,4,5]);
-    }
-
-    fn execute_all<'a, I>(closures: I)
-    where I: IntoIterator<Item=StackPtr<'a, FnOnce()>> {
-        for closure in closures {
-            mem::drop(closure);
-        }
-    }
-
-    #[test]
-    fn test_execute_all() {
-        let mut callback1 = ||{};
-        let mut callback1_lifetime = ();
-        let callback1 = unsafe {
-            let ptr = &mut callback1.0 as *mut FnOnce();
-            mem::forget(callback1.0);
-            StackPtr::from_raw_parts(ptr, lifetime_of(&mut callback1.1))
-        };
-
-        let mut callback2 = (||{}, ());
-        let callback2 = unsafe {
-            let ptr = &mut callback2.0 as *mut FnOnce();
-            mem::forget(callback2.0);
-            StackPtr::from_raw_parts(ptr, lifetime_of(&mut callback2.1))
-        };
-        execute_all(vec![callback1, callback2]);
-    }
-
 }

@@ -6,7 +6,6 @@ description = "An owned pointer to stack-allocated data"
 repository = "https://github.com/mikeyhew/rust-stack_ptr"
 documentation = "https://docs.rs/"
 license = "MIT"
-license_file = "LICENSE"
 
 [dev-dependencies]
 
