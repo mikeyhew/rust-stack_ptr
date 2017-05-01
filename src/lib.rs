@@ -7,24 +7,14 @@ Provides `StackPtr`, an owned pointer to stack-allocated data. This lets you cas
 #[macro_use]
 extern crate stack_ptr;
 use stack_ptr::StackPtr;
-use stack_ptr::ArrayExt2;
-
-/// Adds a closure to the vec
-fn execute_all<'a, I>(closures: I)
-where I: IntoIterator<Item=StackPtr<'a, FnOnce()>> {
-    unimplemented!();
-}
 
 fn main() {
     declare_stackptr! {
-        let callback1: StackPtr<FnOnce()> = StackPtr::new(||{});
+        let callback: StackPtr<Fn()> = StackPtr::new(||{});
     }
 
-    declare_stackptr! {
-        let callback2: StackPtr<FnOnce()> = StackPtr::new(|| {});
-    }
-
-    execute_all(ArrayExt2([callback1, callback2]));
+    // this example should use call_once(). call() isn't a very motivating example to have an owned reference.
+    callback();
 }
 ```
 */
@@ -73,7 +63,7 @@ impl<'a, T: ?Sized> Drop for StackPtr<'a, T> {
 
 #[doc(hidden)]
 #[inline(always)]
-pub unsafe fn construct_mut_ref<'a, T>(ptr: *mut T, _lifetime_marker: &'a mut ()) -> &'a mut T {
+pub unsafe fn construct_mut_ref<'a, T: ?Sized>(ptr: *mut T, _lifetime_marker: &'a mut ()) -> &'a mut T {
     &mut *ptr
 }
 
