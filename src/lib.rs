@@ -29,11 +29,14 @@ fn main() {
 ```
 */
 #![cfg_attr(feature = "nightly", feature(unsize, coerce_unsized))]
-use std::marker::PhantomData;
-use std::{ptr, mem};
+
+extern crate stable_deref_trait;
 
 mod impls;
 pub mod iter;
+
+use std::marker::PhantomData;
+use std::{ptr, mem};
 
 /// An owned pointer type to stack-allocated data. See the module-level documentation for further details.
 pub struct StackPtr<'a, T: 'a + ?Sized> {

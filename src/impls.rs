@@ -4,6 +4,9 @@ use std::ops::{Deref, DerefMut};
 
 use super::StackPtr;
 
+extern crate stable_deref_trait;
+use stable_deref_trait::{StableDeref};
+
 unsafe impl<'a, T: 'a + Send + ?Sized> Send for StackPtr<'a, T> {}
 unsafe impl<'a, T: 'a + Sync + ?Sized> Sync for StackPtr<'a, T> {}
 
@@ -26,6 +29,8 @@ impl<'a, T: ?Sized> DerefMut for StackPtr<'a, T> {
         self.ptr
     }
 }
+
+unsafe impl<'a, T: ?Sized> StableDeref for StackPtr<'a, T> {}
 
 impl<'a, T: ?Sized> AsRef<T> for StackPtr<'a, T> {
     fn as_ref(&self) -> &T {

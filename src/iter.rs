@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 use std::slice;
-use std::{ptr, mem};
+use std::{ptr};
 
 use super::StackPtr;
 
