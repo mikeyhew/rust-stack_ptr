@@ -1,9 +1,11 @@
 use std::fmt::{Debug, Formatter};
 use std::fmt;
 use std::ops::{Deref, DerefMut};
-use std::marker::PhantomData;
 
 use super::StackPtr;
+
+unsafe impl<'a, T: 'a + Send + ?Sized> Send for StackPtr<'a, T> {}
+unsafe impl<'a, T: 'a + Sync + ?Sized> Sync for StackPtr<'a, T> {}
 
 impl<'a, T: ?Sized> Debug for StackPtr<'a, T> where T: Debug {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
@@ -37,5 +39,11 @@ impl<'a, T: ?Sized> AsMut<T> for StackPtr<'a, T> {
     }
 }
 
-unsafe impl<'a, T: 'a + Send + ?Sized> Send for StackPtr<'a, T> {}
-unsafe impl<'a, T: 'a + Sync + ?Sized> Sync for StackPtr<'a, T> {}
+#[cfg(feature="nightly")]
+mod nightly {
+    use super::StackPtr;
+    use std::ops::CoerceUnsized;
+    use std::marker::Unsize;
+
+    impl<'a, T, U> CoerceUnsized<StackPtr<'a, U>> for StackPtr<'a, T> where T: Unsize<U> + ?Sized, U: ?Sized {}
+}

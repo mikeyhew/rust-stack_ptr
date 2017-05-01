@@ -126,12 +126,3 @@ macro_rules! coerce_stackptr {
         }
     }};
 }
-
-#[cfg(feature="nightly")]
-mod nightly {
-    use super::StackPtr;
-    use std::ops::CoerceUnsized;
-    use std::marker::Unsize;
-
-    impl<'a, T, U> CoerceUnsized<StackPtr<'a, U>> for StackPtr<'a, T> where T: Unsize<U> + ?Sized, U: ?Sized {}
-}
